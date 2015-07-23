@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+	<header>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<link rel="stylesheet" href="ui.css" type="text/css">
+		<title>Lab user-guided-correspondences</title>
+	</head>
+
+    <body>
+        <script src="../build/three.min.js"></script>
+
+        <script src="js/controls/TrackballControls.js"></script>
+
+        //<script src="js/loaders/VTKLoader.js"></script>
+        <script src="js/loaders/OBJLoader.js"></script>
+
+        <script src="js/Detector.js"></script>
+        <script src="js/libs/stats.min.js"></script>
+
+        <script>
+            if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+            //var loader = new THREE.VTKLoader();
+            var loader = new THREE.OBJLoader();
+            var controls_, controls2_;
+            var currentPointIdx_ = 0;
+            var bgColor_ = new THREE.Color(1,1,1);
+            var highlightColor_ = new THREE.Color( 1,0.4,0 );
+            var selectedPoints_ = [];
+            var pcPointsArray_ = [];
+
+            /* read in indices of model vertices to be queried by UI
+               indices are supplied via URL in following example format:
+               ?IDX=1,23,02,87
+             */
+            var modelVerticesIDX_ = QueryString("idx").split(',').map(function(n)
+            {
+                return Number(n);
+            });
+
+            function animate()
+            {
+                requestAnimationFrame( animate );
+
+                controls2_.update();
+                renderer2_.render( scene2_, camera2_ );
+
+                try
+                {
+                    controls_.update();
+                    renderer_.render( scene_, camera_ );
+                     stats.update();
+                }
+                catch (e)
+                {
+                    if (e  instanceof TypeError || e instanceof ReferenceError)
+                    {
+                        console.log("Known problem with dual controls/renderer definition. Should be working fine though.");
+                    }
+                }
+            }
+
+            /* adjusts the cam position, so that object is in FoV */
+            function adjustCamToObject( object, camera )
+            {
+                object.geometry.computeBoundingSphere();
+                var objectRadius = object.geometry.boundingSphere.radius;
+                var vFOV = camera.fov * Math.PI / 180;
+                var zoom = (objectRadius/2) / Math.tan(vFOV/2);
+                camera.position.z = 3.2*zoom;
+            }
+
+            /* pushes the modelVertices in vertices with index contained in modelVerticesIDX_
+               into the point cloud array pcPointsArray_ */
+            function pushModelVerticesToPC(vertices)
+            {
+                var numVertices = vertices.length / 3;
+
+                for ( var i = 0, l = modelVerticesIDX_.length; i < l; i ++ )
+                {
+                    if ( modelVerticesIDX_[i] > numVertices )
+                    {
+                        console.log("index out of vertices range (idx: "+modelVerticesIDX_[i]+", #vertices: "+numVertices);
+                        return;
+                    }
+                    var x = vertices[ modelVerticesIDX_[i] * 3 ];
+                    var y = vertices[ modelVerticesIDX_[i] * 3 + 1 ];
+                    var z = vertices[ modelVerticesIDX_[i] * 3 + 2 ];
+                    pcPointsArray_.push( new THREE.Vector3(x, y, z) );
+                }
+            }
+
+
+            /* selects the next modelPoint from modelVerticesIDX_ to be highlighted and pushes the selected input
+               point to selectedPoints_ */
+            function selectNextPoint()
+            {
+                if ( currentPointIdx_ >= pcPointsArray_.length ) return; // don't accept new input whilst task is completed
+
+                // advance index
+                if ( currentPointIdx_ < pcPointsArray_.length-1 )
+                {
+                    if ( (sphere_.position.x == 0) && (sphere_.position.y == 0) && (sphere_.position.z == 0) ) return; // proceed only, if input differs from origin
+                    ++currentPointIdx_;
+
+                    // highlight selected point, reset previous to background
+                    if ( currentPointIdx_ > 0 ) pcExample_.geometry.colors[ currentPointIdx_-1 ] = bgColor_; // reset color previous point
+                    pcExample_.geometry.colors[ currentPointIdx_ ] = highlightColor_;
+
+                    selectedPoints_.push(sphere_.position.clone()); // read position from select Pane
+
+                    sphere_.position.x = 0;
+                    sphere_.position.y = 0; // reset picker
+                    sphere_.position.z = 0;
+
+                    pcExample_.geometry.colorsNeedUpdate = true;
+
+                    /*for ( var i = 1, l = scene_.children.length; i < l; i ++ ) // TODO: rotate into viewline
+                    {
+
+                        scene_.children[ i ].lookAt( pcExample_.geometry.vertices[currentPointIdx_] );
+
+                    }
+                    camera_.lookAt( scene_.position );
+                    camera_.position.z = -0.3
+                    modelMesh_.rotation.x += 120*(Math.PI/180);
+                    pcExample_.rotation.x += 120*(Math.PI/180)*/
+                }
+                else
+                {
+                    if ( (sphere_.position.x == 0) && (sphere_.position.y == 0) && (sphere_.position.z == 0) ) return; // proceed only, if input differs from origin
+                    selectedPoints_.push(sphere_.position.clone());
+                    console.log("task done");
+
+                    var answerPoints = [];
+
+                    for ( var i = 0; i < selectedPoints_.length; i ++ )
+                    {
+                        var currentPoint = new THREE.Vector3();
+
+                        currentPoint = selectedPoints_[i];
+                        answerPoints.push(currentPoint);
+                        console.log("Point "+i+" selected (x,y,z): "+currentPoint.x+", "+currentPoint.y+", "+currentPoint.z);
+                    }
+
+                    showAnswer(answerPoints);
+                }
+            }
+
+
+            /* function QueryString:
+               read variables from URL - code snippet by "kosmos" -
+               https://css-tricks.com/snippets/javascript/get-url-variables/#comment-1396508
+               date of access: 18.07.2015
+            */
+            function QueryString(variable)
+            {
+                try
+                {
+                    q = location.search.substring(1);
+                    v = q.split("&");
+                    for( var i = 0; i < v.length; i++ )
+                    {
+                        p = v[i].split("=");
+                        if( p[0] == variable )
+                        {
+                            if( p[1].indexOf('%20') != -1 )
+                            {
+                                return decodeURIComponent(p[1]);
+                            }
+                            else
+                            {
+                                return p[1];
+                            }
+                        }
+                    }
+                }
+                catch (e)
+                {
+                    console.log(e);
+                }
+            }
+
+            /* display's the user provided answer to the task */
+            function showAnswer(answerPoints)
+            {
+                var answerBox = document.getElementById('answerBox');
+                var answer = "";
+
+                for ( var i = 0; i < answerPoints.length; i ++ )
+                {
+                    answer += modelVerticesIDX_[i]+" <-> ("+answerPoints[i].x+", "+answerPoints[i].y+", "+answerPoints[i].z+")\n";
+                }
+
+                answer += "\n";
+                answer += "viewShapeURI: "+shapeURI+"\n";
+                answer += "selectShapeURI: "+shapeURI2;
+
+                answerBox.innerHTML = "Congratulations! You solved the task.<br><u>Now please copy&paste the following answer back into the HIT answer form!</u><br><br>"
+                answerBox.innerHTML += "<textarea name='answer' rows='"+(answerPoints.length+3)+"' cols='75' onclick='this.focus();this.select()' readonly='readonly'>"+answer+"</textarea>";
+
+                answerBox.style.display = 'inline';
+            }
+        </script>
+
+        <div id="info">
+            select the highlighted point <b id="point">&#9632;</b> from the right view<br>
+            by clicking it <b id="correspondence">&#9679;</b> in the left view, then press "ok >> next"!<br><br>
+            user-guided-correspondence <br>
+            <a href="mailto:kaster@cs.uni-bonn.de">kaster@cs.uni-bonn.de</a>
+        </div>
+
+        <div id="answerBox">
+        </div>
+
+        <div id="leftpane">
+               <script type="text/javascript" >
+    					var shapeURI2 = "obj/datasets/entropy_fourlegged_10.obj";
+    					shapeURI2 = QueryString("selectShapeURI");
+					</script>
+
+					<script>
+    					var selectPane = document.getElementById('leftpane');
+    					selectPane.innerWidth = window.innerWidth / 1.5; // workaround, approx. value
+    					selectPane.innerHeight = window.innerHeight / 1.5;
+
+    					var camera2_, scene2_, renderer2_;
+
+    					var raycaster;
+    					var mouse2_;
+    					var objects2 = [];
+
+    					var sphere_;
+    					var sphereRadius_ = 0.004;
+    					var clock;
+
+    					var threshold = 0.1;
+    					var toggle = 0.3; // block click selection by this amount of ms to prevent unwanted replacement of selector
+
+					   // model offset Y
+    					var modelOffsetY2_ = 0;
+
+    					// display Ground plane
+    					var showGroundPlane = false;
+
+
+    					init2();
+    					animate();
+
+    					function init2()
+    					{
+        					camera2_ = new THREE.PerspectiveCamera( 60, selectPane.innerWidth / selectPane.innerHeight, 0.01, 1e10 );
+        					camera2_.position.z = 0.2;
+
+        					clock = new THREE.Clock();
+
+        					scene2_ = new THREE.Scene();
+
+        					scene2_.add( camera2_ );
+
+        					var sphereGeometry = new THREE.SphereGeometry( sphereRadius_, 32, 32 );
+        					var sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, shading: THREE.FlatShading } );
+        					sphere_ = new THREE.Mesh( sphereGeometry, sphereMaterial );
+        					scene2_.add( sphere_ );
+
+        					raycaster = new THREE.Raycaster();
+        					mouse2_ = new THREE.Vector2();
+
+				        	document.addEventListener( 'mousedown', onDocumentMouseDown, false );
+        					document.addEventListener( 'touchstart', onDocumentTouchStart, false );
+
+        					// light
+
+        					var dirLight = new THREE.DirectionalLight( 0xffffff );
+        					dirLight.position.set( 200, 200, 1000 ).normalize();
+
+        					camera2_.add( dirLight );
+        					camera2_.add( dirLight.target );
+
+        					function onDocumentTouchStart( event )
+        					{
+
+            				event.preventDefault();
+
+            				event.clientX = event.touches[0].clientX;
+            				event.clientY = event.touches[0].clientY;
+            				onDocumentMouseDown( event );
+
+        					}
+
+        					function onDocumentMouseDown( event )
+        					{
+
+            				event.preventDefault();
+
+            				mouse2_.x = ( event.clientX / renderer2_.domElement.width ) * 2 - 1;
+            				mouse2_.y = - ( event.clientY / renderer2_.domElement.height ) * 2 + 1;
+
+            				raycaster.setFromCamera( mouse2_, camera2_ );
+
+            				var intersections = raycaster.intersectObjects( [modelMesh2_] );
+
+            				var intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
+
+            				if ( toggle > 0.02 && intersection !== null)
+            				{
+
+                				sphere_.position.copy( intersection.point );
+                				sphere_.scale.set( 1, 1, 1 );
+                				toggle = 0;
+                				console.log("position (x,y,z): "+sphere_.position.x+", "+sphere_.position.y+", "+sphere_.position.z);
+         				   }
+			
+            				sphere_.scale.multiplyScalar( 0.98 );
+            				sphere_.scale.clampScalar( 0.01, 1 );
+
+            				toggle += clock.getDelta();
+        					}
+
+        					// Ground
+
+        					if (showGroundPlane)
+        					{
+            				var plane = new THREE.Mesh
+            				(
+                				new THREE.PlaneBufferGeometry( 40, 40 ),
+                				new THREE.MeshPhongMaterial( { color: 0x999999, specular: 0x101010 } )
+            				);
+            				plane.rotation.x = -Math.PI/2;
+            				plane.position.y = -0.5;
+            				scene2_.add( plane );
+
+            				plane.receiveShadow = true;
+        					}
+
+                            var material = new THREE.MeshLambertMaterial( { color:0xffffff, side: THREE.DoubleSide } );
+
+                            /*loader.load( shapeURI2, function ( geometry )
+                            {
+
+                                geometry.computeVertexNormals();
+
+                                var mesh = new THREE.Mesh( geometry, material );
+                                mesh.position.setY( modelOffsetY_ );
+                                modelMesh2_ = mesh;
+                                scene2_.add( mesh );
+                                objects2.push( mesh );
+
+                            } );*/
+
+                            // load the object from OBJ file
+                            loader.load( shapeURI2, function ( object )
+                            {
+                                object.position.y = modelOffsetY2_;
+                                object.traverse( function ( child )
+                                {
+                                    if ( child instanceof THREE.Mesh )
+                                    {
+                                        modelMesh2_ = child;
+                                        adjustCamToObject( child, camera2_ );
+                                    }
+                                } );
+                                scene2_.add( object );
+                            });
+
+
+                            // Renderer
+
+                            renderer2_ = new THREE.WebGLRenderer( { antialias: false } );
+                            renderer2_.setPixelRatio( window.devicePixelRatio );
+                            renderer2_.setSize( selectPane.innerWidth, selectPane.innerHeight );
+
+                            selectPane.appendChild( renderer2_.domElement );
+
+                            controls2_ = new THREE.TrackballControls( camera2_, renderer2_.domElemet );
+
+                            controls2_.rotateSpeed = 5.0;
+                            controls2_.zoomSpeed = 5;
+                            controls2_.panSpeed = 2;
+
+                            controls2_.noZoom = false;
+                            controls2_.noPan = false;
+
+                            controls2_.staticMoving = true;
+                            controls2_.dynamicDampingFactor = 0.3;
+
+
+                            window.addEventListener( 'resize', onWindowResize, false );
+
+                        }
+
+                        function onWindowResize()
+                         {
+
+                            camera2_.aspect = window.innerWidth / window.innerHeight;
+                            camera2_.updateProjectionMatrix();
+
+                            renderer2_.setSize( window.innerWidth, window.innerHeight );
+
+                            controls2_.handleResize();
+                        }
+                    </script>
+        </div>
+
+        <div id="rightpane">
+            <script type="text/javascript" >
+                var shapeURI = "obj/datasets/entropy_fourlegged_02.obj";
+                shapeURI = QueryString("viewShapeURI");
+            </script>
+
+                        <div id="topmenu">
+                            <button id="nextPoint">ok >> next</button>
+                        </div>
+            <script>
+                var viewPane = document.getElementById('rightpane');
+                viewPane.innerWidth = window.innerWidth / 1.5; // workaround, approx. value
+                viewPane.innerHeight = window.innerHeight / 1.5;
+
+                var camera_, scene_, renderer_;
+
+                // pointCloud holding example points that are highlighted and the model mesh
+                var pcExample_, modelMesh_;
+
+                // model offset Y
+                var modelOffsetY_ = 0;
+
+                // point cloud scaling
+                var pcScaleX_ = 1.01;
+                var pcScaleY_ = 1.01;
+                var pcScaleZ_ = 1.01;
+
+                // point cloud
+                var pointSize_ = 0.02;
+
+                // display Ground plane
+                var showGroundPlane = false;
+
+                init();
+                animate();
+
+                function init()
+                {
+                    var buttonOne = document.getElementById( "nextPoint" );
+                    buttonOne.addEventListener( 'click', function() {selectNextPoint()});
+
+                    camera_ = new THREE.PerspectiveCamera( 60, viewPane.innerWidth / viewPane.innerHeight, 0.01, 1e10 );
+                    camera_.position.z = 0.2;
+
+                    scene_ = new THREE.Scene();
+
+                    scene_.add( camera_ );
+
+                    // light
+
+                    var dirLight = new THREE.DirectionalLight( 0xffffff );
+                    dirLight.position.set( 200, 200, 1000 ).normalize();
+
+                    camera_.add( dirLight );
+                    camera_.add( dirLight.target );
+
+                    // Ground
+
+                    if (showGroundPlane)
+                    {
+                        var plane = new THREE.Mesh
+                        (
+                            new THREE.PlaneBufferGeometry( 40, 40 ),
+                            new THREE.MeshPhongMaterial( { color: 0x999999, specular: 0x101010 } )
+                        );
+                        plane.rotation.x = -Math.PI/2;
+                        plane.position.y = -0.5;
+                        scene_.add( plane );
+
+                        plane.receiveShadow = true;
+                    }
+
+                    var material = new THREE.MeshLambertMaterial( { color:0xffffff, side: THREE.DoubleSide } );
+
+                    /*loader.load( shapeURI, function ( geometry )
+                    {
+
+                        geometry.computeVertexNormals();
+
+                        var mesh = new THREE.Mesh( geometry, material );
+                        mesh.position.setY( modelOffsetY_ );
+                        modelMesh_ = mesh;
+                        scene_.add( mesh );
+
+                    } );*/
+
+                    // load the object from OBJ file
+                    loader.load( shapeURI, function ( object )
+                    {
+                        object.position.y = modelOffsetY_;
+                        object.traverse( function ( child )
+                        {
+                            if ( child instanceof THREE.Mesh )
+                            {
+                                modelMesh_ = child;
+                                adjustCamToObject( child, camera_ );
+                                // model's vertices
+                                var vertices = child.geometry.getAttribute('position').array;
+                                pushModelVerticesToPC(vertices);
+                                initPointCloud();
+                            }
+                        } );
+                        scene_.add( object );
+                    });
+
+                    // Renderer
+
+                    renderer_ = new THREE.WebGLRenderer( { antialias: false } );
+                    renderer_.setPixelRatio( window.devicePixelRatio );
+                    renderer_.setSize( viewPane.innerWidth, viewPane.innerHeight );
+
+                    viewPane.appendChild( renderer_.domElement );
+
+                    controls_ = new THREE.TrackballControls( camera_, renderer_.domElement );
+
+                    controls_.rotateSpeed = 5.0;
+                    controls_.zoomSpeed = 5;
+                    controls_.panSpeed = 2;
+
+                    controls_.noZoom = false;
+                    controls_.noPan = false;
+
+                    controls_.staticMoving = true;
+                    controls_.dynamicDampingFactor = 0.3;
+
+                    stats = new Stats();
+                    stats.domElement.style.position = 'absolute';
+                    stats.domElement.style.right = '0px';
+                    stats.domElement.style.top = '0px';
+                    viewPane.appendChild( stats.domElement );
+
+                    viewPane.addEventListener( 'resize', onWindowResize, false );
+
+                }
+
+                function initPointCloud()
+                {
+                    pcExample_ = generateExamplePointcloud( bgColor_, highlightColor_, pcPointsArray_ );
+                    pcExample_.scale.set( pcScaleX_, pcScaleY_, pcScaleZ_ );
+                    pcExample_.position.set( 0, modelOffsetY_, 0 );
+                    scene_.add( pcExample_ );
+                }
+
+                function generateExamplePointcloud( bgColor, highlightColor, pointArray )
+                {
+                    var geometry = new THREE.Geometry();
+
+                    var colors = [];
+
+
+                    for( var i = 0; i < pointArray.length; i++ )
+                    {
+                        var v = pointArray[i];
+
+                        geometry.vertices.push( v );
+
+                        if ( i > 0 )
+                        {
+                            colors[i] = bgColor;
+                        }
+                        else colors[i] = highlightColor;
+
+                    }
+
+                    geometry.colors = colors;
+                    geometry.computeBoundingBox();
+
+                    var material = new THREE.PointCloudMaterial( { size: pointSize_, vertexColors: THREE.VertexColors } );
+                    var pointcloud = new THREE.PointCloud( geometry, material );
+
+                    return pointcloud;
+                }
+
+                function onWindowResize()
+                 {
+
+                    camera_.aspect = viewPane.innerWidth / viewPane.innerHeight;
+                    camera_.updateProjectionMatrix();
+
+                    renderer_.setSize( viewPane.innerWidth, viewPane.innerHeight );
+
+                    controls_.handleResize();
+                }
+            </script>
+        </div>
+    </body>
+</html>

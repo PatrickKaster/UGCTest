@@ -1,0 +1,129 @@
+html
+{
+  box-sizing: border-box;
+}
+*, ::before, ::after
+{
+  box-sizing: inherit;
+}
+
+body
+{
+    max-width:100%;
+    width:100%;
+    height:100%;
+    margin: 0 auto;
+    background-color: #000;
+}
+
+#leftpane
+{
+    float: left;
+    width: 50%;
+    padding: 0;
+}
+
+#rightpane
+{
+    padding: 0;
+}
+
+#leftpane,
+#rightpane,
+#info
+{
+    font-size: 0.91em;
+    font-family: Monospace;
+    background-color: #000;
+    color: #fff;
+    margin: 0px;
+    padding: 0px;
+    overflow: hidden;
+}
+
+#info a, .button { color: #f00; font-weight: bold; text-decoration: underline; cursor: pointer }
+
+#info
+{
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    width: 100%;
+    text-align: center;
+    padding: 0;
+    margin: 0;
+    z-index: 1;
+}
+
+#topmenu
+{
+    position: absolute;
+    bottom: 60px;
+    right: 15%;
+    width: 100%;
+    text-align: right;
+    padding: 0;
+    margin: 0;
+    z-index: 1;
+}
+
+#answerBox
+{
+    position: absolute;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 50%;
+    height: 40%;
+    margin: auto;
+    z-index: 1;
+    display: none; /* hidden at document load */
+
+    text-align: center;
+    font-size: 1.2em;
+    font-family: Monospace;
+    background-color: red;
+    color: #fff;
+    overflow: hidden;
+}
+
+#answer
+{
+    display:block;
+    width:100%;
+    margin:0;
+    border:1px solid #f0f040;
+    background-color:#fffff0;
+    overflow:auto;
+}
+
+#point
+{
+    color: rgb(255,102,0);
+}
+
+#correspondence
+{
+    color: #ff0000;
+}
+
+
+button
+{
+    color: rgb(255,255,255);
+    background-color: rgba(180,180,180,0.5);
+    border: 0px;
+    padding: 5px 10px;
+    cursor: pointer;
+}
+button:hover
+{
+    background-color: rgba(255,0,0,0.5);
+}
+button:active
+{
+    color: #000000;
+    background-color: rgba(255,95,0,1);
+}
