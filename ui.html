@@ -129,7 +129,13 @@
                 else
                 {
                     if ( (sphere_.position.x == 0) && (sphere_.position.y == 0) && (sphere_.position.z == 0) ) return; // proceed only, if input differs from origin
+                    
                     selectedPoints_.push(sphere_.position.clone());
+                    
+						  sphere_.position.x = 0;
+                    sphere_.position.y = 0; // reset picker
+                    sphere_.position.z = 0;                                 
+                    
                     console.log("task done");
 
                     var answerPoints = [];
